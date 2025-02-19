@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BASE_URL } from "../../../Api.config";
+import { toast } from "react-toastify";
 
 // Custom hook for form validation
 const useFormValidation = () => {
@@ -53,7 +54,7 @@ const Register = () => {
       return;
     }
     try {
-      const response = await fetch(`${BASE_URL}user/register`, {
+      const response = await fetch(`${BASE_URL}users/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -64,18 +65,37 @@ const Register = () => {
           password,
         }),
       });
-      const data = await response.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
+
+      // First, check the response status to handle different scenarios
+      if (response.status === 201) {
+        const data = await response.json();
+        console.log(data);
+        toast.success("Registration successful");
         setError("");
         navigate("/login");
+      } else {
+        // If the response isn't ok, read the response text which might not be JSON
+        const text = await response.text();
+        console.log(text); // Log the response text for debugging
+
+        if (response.status === 400 && text === "User already registered.") {
+          toast.error("User Already Exists");
+          setError("User already registered.");
+        } else {
+          // For other errors, we'll treat the text as the error message
+          toast.error(
+            text || "An unexpected error occurred during registration."
+          );
+          setError(text || "Registration failed");
+        }
       }
     } catch (error) {
-      setError(error.response?.data || "Registration failed");
+      // Catch any network errors or JSON parsing errors
+      console.error("Error:", error);
+      toast.error("Registration failed. Please try again.");
+      setError(error.message || "Registration failed");
     }
   };
-
   return (
     <div className="flex bg-gradient-to-b from-blue-300 to-blue-100  items-center justify-center min-h-screen p-4">
       <div className="w-full max-w-md">
