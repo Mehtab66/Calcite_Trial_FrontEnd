@@ -1,6 +1,7 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BASE_URL } from "../../../Api.config";
+import { toast } from "react-toastify"; // Import toast from react-toastify
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -11,7 +12,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`${BASE_URL}user/login`, {
+      const response = await fetch(`${BASE_URL}users/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -23,20 +24,27 @@ const Login = () => {
       });
       const data = await response.json();
       console.log(data);
-      if (data.success) {
+      if (data.token) {
         localStorage.setItem("token", data.token);
+        toast.success("Login successful!");
         navigate("/dashboard");
+      } else if (response.status == 400) {
+        toast.error("Invalid email or password");
       } else {
-        setError(data.message);
+        toast.error(
+          data.message || "Login failed. Please check your credentials."
+        );
       }
     } catch (error) {
-      setError(error.response?.data || "Login failed");
+      console.log(error);
+      toast.error("An error occurred. Please try again.");
+      setError(error.message || "Login failed");
     }
   };
 
   return (
     <div className="flex bg-gradient-to-b from-blue-300 to-blue-100 flex-col items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full  max-w-md">
+      <div className="w-full max-w-md">
         <form
           onSubmit={handleSubmit}
           className="bg-white shadow-md rounded-xl px-8 pt-6 pb-8 mb-4"
@@ -95,7 +103,7 @@ const Login = () => {
             </Link>
           </div>
           <p className="text-center mt-6 text-gray-500 text-xs">
-            &copy;2023 Calcite Technologies. All rights reserved.
+            ©2023 Calcite Technologies. All rights reserved.
           </p>
         </form>
       </div>
