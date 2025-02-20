@@ -31,13 +31,15 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
-// Dummy Data
+// Dummy Data for Admin Dashboard
 const dummyReviews = Array.from({ length: 50 }, (_, i) => ({
   _id: `review${i + 1}`,
   agentName: `Agent ${i + 1}`,
   location: ["New York", "Los Angeles", "Chicago", "Houston"][
     Math.floor(Math.random() * 4)
   ],
+  orderType: ["Standard", "Express", "Same-Day"][Math.floor(Math.random() * 3)],
+  discountApplied: Math.random() > 0.5 ? Math.floor(Math.random() * 20) : 0,
   rating: Math.floor(Math.random() * 5) + 1,
   performance: ["Fast", "Average", "Slow"][Math.floor(Math.random() * 3)],
   accuracy: ["Order Accurate", "Order Mistake"][Math.floor(Math.random() * 2)],
@@ -45,9 +47,8 @@ const dummyReviews = Array.from({ length: 50 }, (_, i) => ({
   complaints:
     Math.random() > 0.5
       ? ["Late Delivery", "Rude Behavior"].slice(0, Math.random() > 0.5 ? 1 : 2)
-      : [], // Always an array
+      : [],
   orderPrice: Math.floor(Math.random() * 150),
-  orderType: ["Standard", "Express", "Same-Day"][Math.floor(Math.random() * 3)],
 }));
 
 const dummyUsers = [
@@ -59,7 +60,6 @@ const dummyUsers = [
 const AdminDashboard = () => {
   const [reviews, setReviews] = useState([]);
   const [allReviews, setAllReviews] = useState([]);
-  const [users, setUsers] = useState(dummyUsers);
   const [analytics, setAnalytics] = useState({});
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -70,6 +70,7 @@ const AdminDashboard = () => {
   const [tempFilters, setTempFilters] = useState({
     location: "",
     orderType: "",
+    discountApplied: "",
     rating: "",
     performance: "",
     accuracy: "",
@@ -78,6 +79,7 @@ const AdminDashboard = () => {
   const [appliedFilters, setAppliedFilters] = useState({
     location: "",
     orderType: "",
+    discountApplied: "",
     rating: "",
     performance: "",
     accuracy: "",
@@ -137,6 +139,7 @@ const AdminDashboard = () => {
     const cleared = {
       location: "",
       orderType: "",
+      discountApplied: "",
       rating: "",
       performance: "",
       accuracy: "",
@@ -144,26 +147,29 @@ const AdminDashboard = () => {
     };
     setTempFilters(cleared);
     setAppliedFilters(cleared);
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const filteredReviews = useMemo(() => {
-    const source =
-      appliedFilters.location ||
-      appliedFilters.orderType ||
-      appliedFilters.rating ||
-      appliedFilters.performance ||
-      appliedFilters.accuracy ||
-      appliedFilters.sentiment
-        ? allReviews
-        : reviews;
-    return source.filter(
-      (review) =>
+    const source = allReviews.length ? allReviews : reviews;
+    return source.filter((review) => {
+      const filterDiscount = appliedFilters.discountApplied
+        ? Number(appliedFilters.discountApplied)
+        : null;
+      const reviewDiscount =
+        review.discountApplied !== undefined
+          ? Math.floor(review.discountApplied)
+          : null;
+
+      return (
         (!appliedFilters.location ||
           review.location
             .toLowerCase()
             .includes(appliedFilters.location.toLowerCase())) &&
         (!appliedFilters.orderType ||
           review.orderType === appliedFilters.orderType) &&
+        (!filterDiscount ||
+          (reviewDiscount !== null && reviewDiscount === filterDiscount)) &&
         (!appliedFilters.rating ||
           review.rating === parseInt(appliedFilters.rating)) &&
         (!appliedFilters.performance ||
@@ -172,31 +178,26 @@ const AdminDashboard = () => {
           review.accuracy === appliedFilters.accuracy) &&
         (!appliedFilters.sentiment ||
           review.sentiment === appliedFilters.sentiment)
-    );
+      );
+    });
   }, [reviews, allReviews, appliedFilters]);
 
   const filteredPagination = useMemo(() => {
-    const isFiltered =
-      appliedFilters.location ||
-      appliedFilters.orderType ||
-      appliedFilters.rating ||
-      appliedFilters.performance ||
-      appliedFilters.accuracy ||
-      appliedFilters.sentiment;
-    if (isFiltered) {
-      const totalFilteredReviews = filteredReviews.length;
-      const totalFilteredPages = Math.ceil(
-        totalFilteredReviews / pagination.limit
-      );
-      return {
-        currentPage: Math.min(pagination.currentPage, totalFilteredPages || 1),
-        totalPages: totalFilteredPages,
-        totalReviews: totalFilteredReviews,
-        limit: pagination.limit,
-      };
-    }
-    return pagination;
-  }, [filteredReviews, appliedFilters, pagination]);
+    const totalFilteredReviews = filteredReviews.length;
+    const totalFilteredPages = Math.ceil(
+      totalFilteredReviews / pagination.limit
+    );
+    const currentPageFiltered = Math.min(
+      pagination.currentPage,
+      totalFilteredPages || 1
+    );
+    return {
+      currentPage: currentPageFiltered,
+      totalPages: totalFilteredPages,
+      totalReviews: totalFilteredReviews,
+      limit: pagination.limit,
+    };
+  }, [filteredReviews, pagination.limit]);
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= filteredPagination.totalPages) {
@@ -205,62 +206,39 @@ const AdminDashboard = () => {
   };
 
   const filteredMetrics = useMemo(() => {
-    const source = allReviews;
-    const filtered = source.filter(
-      (review) =>
-        (!appliedFilters.location ||
-          review.location
-            .toLowerCase()
-            .includes(appliedFilters.location.toLowerCase())) &&
-        (!appliedFilters.orderType ||
-          review.orderType === appliedFilters.orderType) &&
-        (!appliedFilters.rating ||
-          review.rating === parseInt(appliedFilters.rating)) &&
-        (!appliedFilters.performance ||
-          review.performance === appliedFilters.performance) &&
-        (!appliedFilters.accuracy ||
-          review.accuracy === appliedFilters.accuracy) &&
-        (!appliedFilters.sentiment ||
-          review.sentiment === appliedFilters.sentiment)
-    );
+    const source = filteredReviews;
+    if (!source.length) return null;
 
-    if (!filtered.length)
-      return {
-        averageRating: "N/A",
-        topAgent: "N/A",
-        bottomAgent: "N/A",
-        mostCommonComplaint: "N/A",
-        ordersByPriceRange: { "0-50": 0, "50-100": 0, "100+": 0 },
-        complaintsData: { labels: [], counts: [] },
-      };
+    const totalRating = source.reduce((sum, r) => sum + (r.rating || 0), 0);
+    const averageRating = Number((totalRating / source.length).toFixed(2));
 
-    const averageRating = (
-      filtered.reduce((sum, r) => sum + r.rating, 0) / filtered.length
-    ).toFixed(2);
     const agents = Object.values(
-      filtered.reduce((acc, r) => {
-        acc[r.agentName] = acc[r.agentName] || {
+      source.reduce((acc, r) => {
+        const agentKey = r.agentName || "Unknown";
+        acc[agentKey] = acc[agentKey] || {
           total: 0,
           count: 0,
-          agentName: r.agentName,
+          agentName: r.agentName || "Unknown",
         };
-        acc[r.agentName].total += r.rating;
-        acc[r.agentName].count += 1;
+        acc[agentKey].total += r.rating || 0;
+        acc[agentKey].count += 1;
         return acc;
       }, {})
     ).map((a) => ({
       agentName: a.agentName,
-      averageRating: (a.total / a.count).toFixed(2),
+      averageRating: Number((a.total / a.count).toFixed(2)),
     }));
+
     const sortedAgents = agents.sort(
       (a, b) => b.averageRating - a.averageRating
     );
     const topAgent = sortedAgents[0]?.agentName || "N/A";
     const bottomAgent =
       sortedAgents[sortedAgents.length - 1]?.agentName || "N/A";
-    const complaints = filtered.flatMap((r) => r.complaints || []);
+
+    const complaints = source.flatMap((r) => r.complaints || []);
     const complaintCounts = complaints.reduce((acc, c) => {
-      acc[c] = (acc[c] || 0) + 1;
+      if (c) acc[c] = (acc[c] || 0) + 1;
       return acc;
     }, {});
     const sortedComplaints = Object.entries(complaintCounts).sort(
@@ -271,11 +249,14 @@ const AdminDashboard = () => {
       labels: sortedComplaints.slice(0, 5).map(([c]) => c),
       counts: sortedComplaints.slice(0, 5).map(([, c]) => c),
     };
-    const ordersByPriceRange = filtered.reduce(
+
+    const ordersByPriceRange = source.reduce(
       (acc, r) => {
-        if (r.orderPrice <= 50) acc["0-50"] += 1;
-        else if (r.orderPrice <= 100) acc["50-100"] += 1;
-        else acc["100+"] += 1;
+        if (typeof r.orderPrice === "number") {
+          if (r.orderPrice <= 50) acc["0-50"] += 1;
+          else if (r.orderPrice <= 100) acc["50-100"] += 1;
+          else acc["100+"] += 1;
+        }
         return acc;
       },
       { "0-50": 0, "50-100": 0, "100+": 0 }
@@ -289,7 +270,7 @@ const AdminDashboard = () => {
       ordersByPriceRange,
       complaintsData,
     };
-  }, [allReviews, appliedFilters]);
+  }, [filteredReviews]);
 
   const chartOptions = useMemo(
     () => ({
@@ -303,7 +284,6 @@ const AdminDashboard = () => {
     []
   );
 
-  // Admin-specific functions
   const handleTagEdit = (review) => setSelectedReview({ ...review });
   const handleTagSave = () => {
     setAllReviews((prev) =>
@@ -314,10 +294,6 @@ const AdminDashboard = () => {
     );
     setSelectedReview(null);
     toast.success("Review tags updated successfully!");
-  };
-  const handleDeleteUser = (userId) => {
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
-    toast.success("User deleted successfully!");
   };
 
   if (loading) return <div className="p-6">Loading...</div>;
@@ -337,6 +313,12 @@ const AdminDashboard = () => {
         <p>
           <span className="font-bold">Role:</span> {user?.role}
         </p>
+        <button
+          onClick={() => navigate("/users")}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Manage Users
+        </button>
       </div>
       {error && (
         <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>
@@ -372,6 +354,18 @@ const AdminDashboard = () => {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-gray-700 mb-1">Discount Applied</label>
+            <input
+              type="number"
+              name="discountApplied"
+              value={tempFilters.discountApplied}
+              onChange={handleFilterChange}
+              placeholder="Enter discount amount"
+              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+              step="any"
+            />
           </div>
           <div>
             <label className="block text-gray-700 mb-1">Rating</label>
@@ -454,199 +448,193 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* User Management Section */}
-      <div className="mb-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4 text-gray-700">
-          User Management
-        </h2>
-        <table className="w-full table-auto">
-          <thead className="bg-gray-100">
-            <tr>
-              {["Name", "Email", "Role", "Actions"].map((header) => (
-                <th
-                  key={header}
-                  className="text-left p-3 text-gray-700 font-semibold"
-                >
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b hover:bg-gray-50">
-                <td className="p-3">{u.name}</td>
-                <td className="p-3">{u.email}</td>
-                <td className="p-3">{u.role}</td>
-                <td className="p-3">
-                  <button
-                    onClick={() => handleDeleteUser(u.id)}
-                    className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
+      {filteredReviews.length === 0 && (
+        <div className="text-center p-6 bg-white rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-700">
+            No Data Found with Current Filters
+          </h2>
+          <p className="text-gray-600 mt-2">
+            Please adjust or clear filters to view data.
+          </p>
+        </div>
+      )}
+
+      {filteredReviews.length > 0 && (
+        <>
+          {/* Key Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            {[
+              { title: "Average Rating", value: filteredMetrics.averageRating },
+              {
+                title: "Total Reviews",
+                value: filteredPagination.totalReviews,
+              },
+              { title: "Top Agent", value: filteredMetrics.topAgent },
+              { title: "Bottom Agent", value: filteredMetrics.bottomAgent },
+              {
+                title: "Most Common Complaint",
+                value: filteredMetrics.mostCommonComplaint,
+              },
+            ].map((metric, idx) => (
+              <div
+                key={idx}
+                className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+              >
+                <h2 className="text-lg font-semibold text-gray-700">
+                  {metric.title}
+                </h2>
+                <p className="text-2xl text-gray-900 mt-2">{metric.value}</p>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-        {[
-          { title: "Average Rating", value: filteredMetrics.averageRating },
-          { title: "Total Reviews", value: filteredPagination.totalReviews },
-          { title: "Top Agent", value: filteredMetrics.topAgent },
-          { title: "Bottom Agent", value: filteredMetrics.bottomAgent },
-          {
-            title: "Most Common Complaint",
-            value: filteredMetrics.mostCommonComplaint,
-          },
-        ].map((metric, idx) => (
-          <div
-            key={idx}
-            className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-          >
-            <h2 className="text-lg font-semibold text-gray-700">
-              {metric.title}
-            </h2>
-            <p className="text-2xl text-gray-900 mt-2">{metric.value}</p>
           </div>
-        ))}
-      </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4 text-gray-700">
-            Orders by Price Range
-          </h2>
-          <div style={{ height: "350px" }}>
-            <Bar
-              data={{
-                labels: Object.keys(filteredMetrics.ordersByPriceRange),
-                datasets: [
-                  {
-                    label: "Orders",
-                    data: Object.values(filteredMetrics.ordersByPriceRange),
-                    backgroundColor: ["#3b82f6", "#ef4444", "#10b981"],
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4 text-gray-700">
-            Most Common Complaints
-          </h2>
-          <div style={{ height: "350px" }}>
-            <Pie
-              data={{
-                labels: filteredMetrics.complaintsData.labels,
-                datasets: [
-                  {
-                    data: filteredMetrics.complaintsData.counts,
-                    backgroundColor: [
-                      "#3b82f6",
-                      "#ef4444",
-                      "#10b981",
-                      "#f59e0b",
-                      "#8b5cf6",
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700">
+                Orders by Price Range
+              </h2>
+              <div style={{ height: "350px" }}>
+                <Bar
+                  data={{
+                    labels: Object.keys(filteredMetrics.ordersByPriceRange),
+                    datasets: [
+                      {
+                        label: "Orders",
+                        data: Object.values(filteredMetrics.ordersByPriceRange),
+                        backgroundColor: ["#3b82f6", "#ef4444", "#10b981"],
+                      },
                     ],
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
+                  }}
+                  options={chartOptions}
+                />
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700">
+                Most Common Complaints
+              </h2>
+              <div style={{ height: "350px" }}>
+                <Pie
+                  data={{
+                    labels: filteredMetrics.complaintsData.labels,
+                    datasets: [
+                      {
+                        data: filteredMetrics.complaintsData.counts,
+                        backgroundColor: [
+                          "#3b82f6",
+                          "#ef4444",
+                          "#10b981",
+                          "#f59e0b",
+                          "#8b5cf6",
+                        ],
+                      },
+                    ],
+                  }}
+                  options={chartOptions}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Reviews Table with Tag Editing */}
-      <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
-        <h2 className="text-lg font-semibold mb-4 text-gray-700">
-          Filtered Reviews (Editable Tags)
-        </h2>
-        <table className="w-full table-auto">
-          <thead className="bg-gray-100">
-            <tr>
-              {[
-                "Agent",
-                "Location",
-                "Rating",
-                "Performance",
-                "Accuracy",
-                "Sentiment",
-                "Complaints",
-                "Actions",
-              ].map((header) => (
-                <th
-                  key={header}
-                  className="text-left p-3 text-gray-700 font-semibold"
-                >
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredReviews
-              .slice(
-                (filteredPagination.currentPage - 1) * filteredPagination.limit,
-                filteredPagination.currentPage * filteredPagination.limit
-              )
-              .map((review) => (
-                <tr key={review._id} className="border-b hover:bg-gray-50">
-                  <td className="p-3">{review.agentName}</td>
-                  <td className="p-3">{review.location}</td>
-                  <td className="p-3">{review.rating}</td>
-                  <td className="p-3">{review.performance}</td>
-                  <td className="p-3">{review.accuracy}</td>
-                  <td className="p-3">{review.sentiment}</td>
-                  <td className="p-3">
-                    {Array.isArray(review.complaints)
-                      ? review.complaints.join(", ")
-                      : "None"}
-                  </td>
-                  <td className="p-3">
-                    <button
-                      onClick={() => handleTagEdit(review)}
-                      className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          {/* Reviews Table with Tag Editing */}
+          <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
+            <h2 className="text-lg font-semibold mb-4 text-gray-700">
+              Filtered Reviews (Editable Tags)
+            </h2>
+            <table className="w-full table-auto">
+              <thead className="bg-gray-100">
+                <tr>
+                  {[
+                    "Agent",
+                    "Location",
+                    "Order Type",
+                    "Discount Applied",
+                    "Rating",
+                    "Performance",
+                    "Accuracy",
+                    "Sentiment",
+                    "Complaints",
+                    "Actions",
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="text-left p-3 text-gray-700 font-semibold"
                     >
-                      Edit Tags
-                    </button>
-                  </td>
+                      {header}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-          </tbody>
-        </table>
-        <div className="flex justify-between items-center mt-4">
-          <button
-            onClick={() => handlePageChange(filteredPagination.currentPage - 1)}
-            disabled={filteredPagination.currentPage === 1}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
-          >
-            Previous
-          </button>
-          <span className="text-gray-700">
-            Page {filteredPagination.currentPage} of{" "}
-            {filteredPagination.totalPages} (Total:{" "}
-            {filteredPagination.totalReviews})
-          </span>
-          <button
-            onClick={() => handlePageChange(filteredPagination.currentPage + 1)}
-            disabled={
-              filteredPagination.currentPage === filteredPagination.totalPages
-            }
-            className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filteredReviews
+                  .slice(
+                    (filteredPagination.currentPage - 1) *
+                      filteredPagination.limit,
+                    filteredPagination.currentPage * filteredPagination.limit
+                  )
+                  .map((review) => (
+                    <tr key={review._id} className="border-b hover:bg-gray-50">
+                      <td className="p-3">{review.agentName || "N/A"}</td>
+                      <td className="p-3">{review.location || "N/A"}</td>
+                      <td className="p-3">{review.orderType || "N/A"}</td>
+                      <td className="p-3">
+                        {review.discountApplied !== undefined
+                          ? review.discountApplied.toFixed(2)
+                          : "N/A"}
+                      </td>
+                      <td className="p-3">{review.rating || "N/A"}</td>
+                      <td className="p-3">{review.performance || "N/A"}</td>
+                      <td className="p-3">{review.accuracy || "N/A"}</td>
+                      <td className="p-3">{review.sentiment || "N/A"}</td>
+                      <td className="p-3">
+                        {Array.isArray(review.complaints)
+                          ? review.complaints.join(", ")
+                          : "None"}
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => handleTagEdit(review)}
+                          className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                        >
+                          Edit Tags
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <div className="flex justify-between items-center mt-4">
+              <button
+                onClick={() =>
+                  handlePageChange(filteredPagination.currentPage - 1)
+                }
+                disabled={filteredPagination.currentPage === 1}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
+              >
+                Previous
+              </button>
+              <span className="text-gray-700">
+                Page {filteredPagination.currentPage} of{" "}
+                {filteredPagination.totalPages} (Total:{" "}
+                {filteredPagination.totalReviews})
+              </span>
+              <button
+                onClick={() =>
+                  handlePageChange(filteredPagination.currentPage + 1)
+                }
+                disabled={
+                  filteredPagination.currentPage ===
+                  filteredPagination.totalPages
+                }
+                className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Tag Editing Modal */}
       {selectedReview && (
