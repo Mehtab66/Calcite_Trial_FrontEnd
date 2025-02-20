@@ -1,13 +1,15 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BASE_URL } from "../../../Api.config";
-import { toast } from "react-toastify"; // Import toast from react-toastify
+import { toast } from "react-toastify";
+import { useAuth } from "../../Context/AuthContext"; // Import useAuth
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const { StoreTokenAndRole } = useAuth(); // Use useAuth
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,10 +27,10 @@ const Login = () => {
       const data = await response.json();
       console.log(data);
       if (data.token) {
-        localStorage.setItem("token", data.token);
+        StoreTokenAndRole(data.token, data.user);
         toast.success("Login successful!");
         navigate("/dashboard");
-      } else if (response.status == 400) {
+      } else if (response.status === 400) {
         toast.error("Invalid email or password");
       } else {
         toast.error(
@@ -37,7 +39,7 @@ const Login = () => {
       }
     } catch (error) {
       console.log(error);
-      toast.error("An error occurred. Please try again.");
+      toast.error(error.message || "An error occurred. Please try again.");
       setError(error.message || "Login failed");
     }
   };
