@@ -64,7 +64,7 @@ const Dashboard = () => {
   const debouncedFilters = useDebounce(tempFilters, 500);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
-  const { token, loading, user } = useAuth();
+  const { token, loading, user, logout } = useAuth();
 
   const fetchData = useCallback(
     async (page = 1) => {
@@ -323,6 +323,12 @@ const Dashboard = () => {
         <p>
           <span className="font-bold">Role:</span> {user?.role}
         </p>
+        <button
+          onClick={logout()}
+          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Logout
+        </button>
       </div>
       {error && (
         <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>

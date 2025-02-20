@@ -12,6 +12,8 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+import { useAuth } from "../../Context/AuthContext";
+import { BASE_URL } from "../../../Api.config";
 
 ChartJS.register(
   CategoryScale,
@@ -30,32 +32,6 @@ const useDebounce = (value, delay) => {
   }, [value, delay]);
   return debouncedValue;
 };
-
-// Dummy Data for Admin Dashboard
-const dummyReviews = Array.from({ length: 50 }, (_, i) => ({
-  _id: `review${i + 1}`,
-  agentName: `Agent ${i + 1}`,
-  location: ["New York", "Los Angeles", "Chicago", "Houston"][
-    Math.floor(Math.random() * 4)
-  ],
-  orderType: ["Standard", "Express", "Same-Day"][Math.floor(Math.random() * 3)],
-  discountApplied: Math.random() > 0.5 ? Math.floor(Math.random() * 20) : 0,
-  rating: Math.floor(Math.random() * 5) + 1,
-  performance: ["Fast", "Average", "Slow"][Math.floor(Math.random() * 3)],
-  accuracy: ["Order Accurate", "Order Mistake"][Math.floor(Math.random() * 2)],
-  sentiment: ["Positive", "Neutral", "Negative"][Math.floor(Math.random() * 3)],
-  complaints:
-    Math.random() > 0.5
-      ? ["Late Delivery", "Rude Behavior"].slice(0, Math.random() > 0.5 ? 1 : 2)
-      : [],
-  orderPrice: Math.floor(Math.random() * 150),
-}));
-
-const dummyUsers = [
-  { id: 1, name: "Admin John", email: "john@admin.com", role: "Admin" },
-  { id: 2, name: "User Alice", email: "alice@user.com", role: "User" },
-  { id: 3, name: "User Bob", email: "bob@user.com", role: "User" },
-];
 
 const AdminDashboard = () => {
   const [reviews, setReviews] = useState([]);
@@ -87,47 +63,113 @@ const AdminDashboard = () => {
   });
   const debouncedFilters = useDebounce(tempFilters, 500);
   const [error, setError] = useState(null);
-  const [selectedReview, setSelectedReview] = useState(null); // For tag editing
+  const [selectedReview, setSelectedReview] = useState(null);
   const navigate = useNavigate();
-  const { token, loading, user } = {
-    token: "dummy-token",
-    loading: false,
-    user: { name: "Admin John", email: "john@admin.com", role: "Admin" },
-  }; // Simulated auth
+  const { token, loading, user, logout } = useAuth();
 
-  const fetchDummyData = useCallback(() => {
-    const paginatedReviews = dummyReviews.slice(0, pagination.limit);
-    setReviews(paginatedReviews);
-    setAllReviews(dummyReviews);
-    setPagination({
-      currentPage: 1,
-      totalPages: Math.ceil(dummyReviews.length / pagination.limit),
-      totalReviews: dummyReviews.length,
-      limit: pagination.limit,
-    });
-
-    const analyticsData = {
-      averageRating: (
-        dummyReviews.reduce((sum, r) => sum + r.rating, 0) / dummyReviews.length
-      ).toFixed(2),
-      topAgent: dummyReviews.sort((a, b) => b.rating - a.rating)[0].agentName,
-      bottomAgent: dummyReviews.sort((a, b) => a.rating - b.rating)[0]
-        .agentName,
-      mostCommonComplaint: "Late Delivery",
-      ordersByPriceRange: { "0-50": 15, "50-100": 20, "100+": 15 },
-      complaintsData: {
-        labels: ["Late Delivery", "Rude Behavior"],
-        counts: [10, 5],
-      },
-    };
-    setAnalytics(analyticsData);
-  }, [pagination.limit]);
-
+  // Authentication and Authorization Check
   useEffect(() => {
     if (!loading) {
-      fetchDummyData();
+      if (!token || !user) {
+        toast.error("Authentication required. Please log in.");
+        navigate("/login");
+      } else if (user.role !== "admin") {
+        // Match backend's lowercase "admin"
+        toast.error("Unauthorized access. Admins only.");
+        navigate("/dashboard");
+      }
     }
-  }, [fetchDummyData, loading]);
+  }, [loading, token, user, navigate]);
+
+  const fetchData = useCallback(
+    async (page = 1) => {
+      if (!token || user?.role !== "admin") return;
+
+      try {
+        console.log("Fetching data with token:", token); // Debug token
+        const [reviewsResponse, analyticsResponse] = await Promise.all([
+          fetch(`${BASE_URL}review?page=${page}&limit=${pagination.limit}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
+          }),
+          fetch(`${BASE_URL}review/analytics`, {
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
+          }),
+        ]);
+
+        console.log("Reviews Response Status:", reviewsResponse.status); // Debug status
+        console.log("Analytics Response Status:", analyticsResponse.status);
+
+        if (
+          reviewsResponse.status === 401 ||
+          analyticsResponse.status === 401
+        ) {
+          toast.error("Session expired. Please log in again.");
+          logout();
+          navigate("/login");
+          return;
+        }
+
+        if (!reviewsResponse.ok || !analyticsResponse.ok) {
+          const reviewsText = await reviewsResponse.text();
+          const analyticsText = await analyticsResponse.text();
+          throw new Error(
+            `Failed to fetch data: Reviews - ${reviewsText}, Analytics - ${analyticsText}`
+          );
+        }
+
+        const [reviewsData, analyticsData] = await Promise.all([
+          reviewsResponse.json(),
+          analyticsResponse.json(),
+        ]);
+
+        console.log("Reviews Data:", reviewsData); // Debug full response
+        console.log("Analytics Data:", analyticsData);
+
+        setReviews(reviewsData.reviews || []);
+        setPagination({
+          currentPage: reviewsData.pagination?.currentPage || 1,
+          totalPages: reviewsData.pagination?.totalPages || 1,
+          totalReviews: reviewsData.pagination?.totalReviews || 0,
+          limit: reviewsData.pagination?.limit || 10,
+        });
+
+        if (page === 1 && !allReviews.length) {
+          const allReviewsResponse = await fetch(
+            `${BASE_URL}review?page=1&limit=${
+              reviewsData.pagination?.totalReviews || 500
+            }`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              credentials: "include",
+            }
+          );
+          if (!allReviewsResponse.ok) {
+            const errorText = await allReviewsResponse.text();
+            throw new Error(`Failed to fetch all reviews: ${errorText}`);
+          }
+          const allReviewsData = await allReviewsResponse.json();
+          console.log("All Reviews Data:", allReviewsData);
+          setAllReviews(allReviewsData.reviews || []);
+        }
+
+        setAnalytics(analyticsData || {});
+        setError(null);
+      } catch (error) {
+        console.error("Fetch error:", error);
+        setError(error.message);
+        toast.error(`Failed to load dashboard data: ${error.message}`);
+      }
+    },
+    [token, user, pagination.limit, allReviews.length, navigate, logout]
+  );
+
+  useEffect(() => {
+    if (!loading && token && user?.role === "admin") {
+      fetchData(pagination.currentPage);
+    }
+  }, [fetchData, pagination.currentPage, loading, token, user]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -135,8 +177,9 @@ const AdminDashboard = () => {
   };
 
   const applyFilters = () => setAppliedFilters(debouncedFilters);
+
   const clearFilters = () => {
-    const cleared = {
+    setTempFilters({
       location: "",
       orderType: "",
       discountApplied: "",
@@ -144,14 +187,23 @@ const AdminDashboard = () => {
       performance: "",
       accuracy: "",
       sentiment: "",
-    };
-    setTempFilters(cleared);
-    setAppliedFilters(cleared);
+    });
+    setAppliedFilters({
+      location: "",
+      orderType: "",
+      discountApplied: "",
+      rating: "",
+      performance: "",
+      accuracy: "",
+      sentiment: "",
+    });
     setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const filteredReviews = useMemo(() => {
     const source = allReviews.length ? allReviews : reviews;
+    if (!source.length) return [];
+
     return source.filter((review) => {
       const filterDiscount = appliedFilters.discountApplied
         ? Number(appliedFilters.discountApplied)
@@ -163,9 +215,10 @@ const AdminDashboard = () => {
 
       return (
         (!appliedFilters.location ||
-          review.location
-            .toLowerCase()
-            .includes(appliedFilters.location.toLowerCase())) &&
+          (review.location &&
+            review.location
+              .toLowerCase()
+              .includes(appliedFilters.location.toLowerCase()))) &&
         (!appliedFilters.orderType ||
           review.orderType === appliedFilters.orderType) &&
         (!filterDiscount ||
@@ -184,12 +237,11 @@ const AdminDashboard = () => {
 
   const filteredPagination = useMemo(() => {
     const totalFilteredReviews = filteredReviews.length;
-    const totalFilteredPages = Math.ceil(
-      totalFilteredReviews / pagination.limit
-    );
+    const totalFilteredPages =
+      Math.ceil(totalFilteredReviews / pagination.limit) || 1;
     const currentPageFiltered = Math.min(
       pagination.currentPage,
-      totalFilteredPages || 1
+      totalFilteredPages
     );
     return {
       currentPage: currentPageFiltered,
@@ -210,7 +262,9 @@ const AdminDashboard = () => {
     if (!source.length) return null;
 
     const totalRating = source.reduce((sum, r) => sum + (r.rating || 0), 0);
-    const averageRating = Number((totalRating / source.length).toFixed(2));
+    const averageRating = totalRating
+      ? Number((totalRating / source.length).toFixed(2))
+      : "N/A";
 
     const agents = Object.values(
       source.reduce((acc, r) => {
@@ -218,18 +272,18 @@ const AdminDashboard = () => {
         acc[agentKey] = acc[agentKey] || {
           total: 0,
           count: 0,
-          agentName: r.agentName || "Unknown",
+          agentName: agentKey,
         };
         acc[agentKey].total += r.rating || 0;
         acc[agentKey].count += 1;
         return acc;
       }, {})
-    ).map((a) => ({
+    );
+    const agentRatings = agents.map((a) => ({
       agentName: a.agentName,
-      averageRating: Number((a.total / a.count).toFixed(2)),
+      averageRating: a.count ? Number((a.total / a.count).toFixed(2)) : 0,
     }));
-
-    const sortedAgents = agents.sort(
+    const sortedAgents = agentRatings.sort(
       (a, b) => b.averageRating - a.averageRating
     );
     const topAgent = sortedAgents[0]?.agentName || "N/A";
@@ -284,19 +338,66 @@ const AdminDashboard = () => {
     []
   );
 
-  const handleTagEdit = (review) => setSelectedReview({ ...review });
-  const handleTagSave = () => {
-    setAllReviews((prev) =>
-      prev.map((r) => (r._id === selectedReview._id ? selectedReview : r))
-    );
-    setReviews((prev) =>
-      prev.map((r) => (r._id === selectedReview._id ? selectedReview : r))
-    );
-    setSelectedReview(null);
-    toast.success("Review tags updated successfully!");
+  const handleTagSave = async () => {
+    if (!token || user?.role !== "admin") {
+      toast.error("Authentication required to edit tags.");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${BASE_URL}review/${selectedReview._id}/tag`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "Cache-Control": "no-cache",
+          },
+          body: JSON.stringify({
+            performance: selectedReview.performance,
+            accuracy: selectedReview.accuracy,
+            sentiment: selectedReview.sentiment,
+          }),
+          credentials: "include",
+        }
+      );
+
+      if (response.status === 401) {
+        toast.error("Session expired. Please log in again.");
+        logout();
+        navigate("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to update tags: ${errorText}`);
+      }
+
+      const updatedReview = await response.json();
+      setAllReviews((prev) =>
+        prev.map((r) =>
+          r._id === selectedReview._id ? updatedReview.review : r
+        )
+      );
+      setReviews((prev) =>
+        prev.map((r) =>
+          r._id === selectedReview._id ? updatedReview.review : r
+        )
+      );
+      setSelectedReview(null);
+      toast.success("Review tags updated successfully!");
+    } catch (error) {
+      toast.error(`Failed to update tags: ${error.message}`);
+    }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
+  if (loading)
+    return <div className="p-6 text-center text-gray-700">Loading...</div>;
+
+  if (!token || user?.role !== "admin") return null;
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -305,26 +406,32 @@ const AdminDashboard = () => {
       </h1>
       <div className="flex flex-row justify-between items-center bg-white p-6 rounded-lg shadow-md mb-8">
         <p>
-          <span className="font-bold">User:</span> {user?.name}
+          <span className="font-bold">User:</span> {user?.name || "N/A"}
         </p>
         <p>
-          <span className="font-bold">Email:</span> {user?.email}
+          <span className="font-bold">Email:</span> {user?.email || "N/A"}
         </p>
         <p>
-          <span className="font-bold">Role:</span> {user?.role}
+          <span className="font-bold">Role:</span> {user?.role || "N/A"}
         </p>
-        <button
-          onClick={() => navigate("/users")}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          Manage Users
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate("/users")}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Manage Users
+          </button>
+          <button
+            onClick={logout}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            Logout
+          </button>
+        </div>
       </div>
       {error && (
         <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>
       )}
-
-      {/* Filters Section */}
       <div className="mb-8 bg-white p-6 rounded-lg shadow-md">
         <h2 className="text-xl font-semibold mb-4 text-gray-700">Filters</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -447,7 +554,6 @@ const AdminDashboard = () => {
           </button>
         </div>
       </div>
-
       {filteredReviews.length === 0 && (
         <div className="text-center p-6 bg-white rounded-lg shadow-md">
           <h2 className="text-xl font-semibold text-gray-700">
@@ -458,22 +564,23 @@ const AdminDashboard = () => {
           </p>
         </div>
       )}
-
       {filteredReviews.length > 0 && (
         <>
-          {/* Key Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
             {[
-              { title: "Average Rating", value: filteredMetrics.averageRating },
+              {
+                title: "Average Rating",
+                value: filteredMetrics?.averageRating,
+              },
               {
                 title: "Total Reviews",
                 value: filteredPagination.totalReviews,
               },
-              { title: "Top Agent", value: filteredMetrics.topAgent },
-              { title: "Bottom Agent", value: filteredMetrics.bottomAgent },
+              { title: "Top Agent", value: filteredMetrics?.topAgent },
+              { title: "Bottom Agent", value: filteredMetrics?.bottomAgent },
               {
                 title: "Most Common Complaint",
-                value: filteredMetrics.mostCommonComplaint,
+                value: filteredMetrics?.mostCommonComplaint,
               },
             ].map((metric, idx) => (
               <div
@@ -483,12 +590,12 @@ const AdminDashboard = () => {
                 <h2 className="text-lg font-semibold text-gray-700">
                   {metric.title}
                 </h2>
-                <p className="text-2xl text-gray-900 mt-2">{metric.value}</p>
+                <p className="text-2xl text-gray-900 mt-2">
+                  {metric.value ?? "N/A"}
+                </p>
               </div>
             ))}
           </div>
-
-          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4 text-gray-700">
@@ -497,11 +604,15 @@ const AdminDashboard = () => {
               <div style={{ height: "350px" }}>
                 <Bar
                   data={{
-                    labels: Object.keys(filteredMetrics.ordersByPriceRange),
+                    labels: Object.keys(
+                      filteredMetrics?.ordersByPriceRange || {}
+                    ),
                     datasets: [
                       {
                         label: "Orders",
-                        data: Object.values(filteredMetrics.ordersByPriceRange),
+                        data: Object.values(
+                          filteredMetrics?.ordersByPriceRange || {}
+                        ),
                         backgroundColor: ["#3b82f6", "#ef4444", "#10b981"],
                       },
                     ],
@@ -517,10 +628,10 @@ const AdminDashboard = () => {
               <div style={{ height: "350px" }}>
                 <Pie
                   data={{
-                    labels: filteredMetrics.complaintsData.labels,
+                    labels: filteredMetrics?.complaintsData.labels || [],
                     datasets: [
                       {
-                        data: filteredMetrics.complaintsData.counts,
+                        data: filteredMetrics?.complaintsData.counts || [],
                         backgroundColor: [
                           "#3b82f6",
                           "#ef4444",
@@ -536,8 +647,6 @@ const AdminDashboard = () => {
               </div>
             </div>
           </div>
-
-          {/* Reviews Table with Tag Editing */}
           <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
             <h2 className="text-lg font-semibold mb-4 text-gray-700">
               Filtered Reviews (Editable Tags)
@@ -575,26 +684,27 @@ const AdminDashboard = () => {
                   )
                   .map((review) => (
                     <tr key={review._id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">{review.agentName || "N/A"}</td>
-                      <td className="p-3">{review.location || "N/A"}</td>
-                      <td className="p-3">{review.orderType || "N/A"}</td>
+                      <td className="p-3">{review.agentName ?? "N/A"}</td>
+                      <td className="p-3">{review.location ?? "N/A"}</td>
+                      <td className="p-3">{review.orderType ?? "N/A"}</td>
                       <td className="p-3">
-                        {review.discountApplied !== undefined
+                        {review.discountApplied != null
                           ? review.discountApplied.toFixed(2)
                           : "N/A"}
                       </td>
-                      <td className="p-3">{review.rating || "N/A"}</td>
-                      <td className="p-3">{review.performance || "N/A"}</td>
-                      <td className="p-3">{review.accuracy || "N/A"}</td>
-                      <td className="p-3">{review.sentiment || "N/A"}</td>
+                      <td className="p-3">{review.rating ?? "N/A"}</td>
+                      <td className="p-3">{review.performance ?? "N/A"}</td>
+                      <td className="p-3">{review.accuracy ?? "N/A"}</td>
+                      <td className="p-3">{review.sentiment ?? "N/A"}</td>
                       <td className="p-3">
-                        {Array.isArray(review.complaints)
+                        {Array.isArray(review.complaints) &&
+                        review.complaints.length
                           ? review.complaints.join(", ")
                           : "None"}
                       </td>
                       <td className="p-3">
                         <button
-                          onClick={() => handleTagEdit(review)}
+                          onClick={() => setSelectedReview(review)}
                           className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                         >
                           Edit Tags
@@ -635,8 +745,6 @@ const AdminDashboard = () => {
           </div>
         </>
       )}
-
-      {/* Tag Editing Modal */}
       {selectedReview && (
         <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -644,7 +752,7 @@ const AdminDashboard = () => {
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Performance</label>
               <select
-                value={selectedReview.performance}
+                value={selectedReview.performance || ""}
                 onChange={(e) =>
                   setSelectedReview((prev) => ({
                     ...prev,
@@ -653,6 +761,7 @@ const AdminDashboard = () => {
                 }
                 className="w-full p-2 border rounded-md"
               >
+                <option value="">Select</option>
                 {["Fast", "Average", "Slow"].map((perf) => (
                   <option key={perf} value={perf}>
                     {perf}
@@ -663,7 +772,7 @@ const AdminDashboard = () => {
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Accuracy</label>
               <select
-                value={selectedReview.accuracy}
+                value={selectedReview.accuracy || ""}
                 onChange={(e) =>
                   setSelectedReview((prev) => ({
                     ...prev,
@@ -672,6 +781,7 @@ const AdminDashboard = () => {
                 }
                 className="w-full p-2 border rounded-md"
               >
+                <option value="">Select</option>
                 {["Order Accurate", "Order Mistake"].map((acc) => (
                   <option key={acc} value={acc}>
                     {acc}
@@ -682,7 +792,7 @@ const AdminDashboard = () => {
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Sentiment</label>
               <select
-                value={selectedReview.sentiment}
+                value={selectedReview.sentiment || ""}
                 onChange={(e) =>
                   setSelectedReview((prev) => ({
                     ...prev,
@@ -691,6 +801,7 @@ const AdminDashboard = () => {
                 }
                 className="w-full p-2 border rounded-md"
               >
+                <option value="">Select</option>
                 {["Positive", "Neutral", "Negative"].map((sent) => (
                   <option key={sent} value={sent}>
                     {sent}
@@ -715,7 +826,6 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
-
       <ToastContainer
         position="top-right"
         autoClose={3000}
