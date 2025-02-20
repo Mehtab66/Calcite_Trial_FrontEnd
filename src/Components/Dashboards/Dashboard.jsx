@@ -12,8 +12,8 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import { BASE_URL } from "../../Api.config";
-import { useAuth } from "../Context/AuthContext";
+import { BASE_URL } from "../../../Api.config";
+import { useAuth } from "../../Context/AuthContext";
 
 ChartJS.register(
   CategoryScale,
@@ -34,8 +34,8 @@ const useDebounce = (value, delay) => {
 };
 
 const Dashboard = () => {
-  const [reviews, setReviews] = useState([]); // Paginated reviews
-  const [allReviews, setAllReviews] = useState([]); // Full dataset for analytics and filtering
+  const [reviews, setReviews] = useState([]);
+  const [allReviews, setAllReviews] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -46,6 +46,7 @@ const Dashboard = () => {
   const [tempFilters, setTempFilters] = useState({
     location: "",
     orderType: "",
+    discountApplied: "",
     rating: "",
     performance: "",
     accuracy: "",
@@ -54,6 +55,7 @@ const Dashboard = () => {
   const [appliedFilters, setAppliedFilters] = useState({
     location: "",
     orderType: "",
+    discountApplied: "",
     rating: "",
     performance: "",
     accuracy: "",
@@ -149,6 +151,7 @@ const Dashboard = () => {
     const cleared = {
       location: "",
       orderType: "",
+      discountApplied: "",
       rating: "",
       performance: "",
       accuracy: "",
@@ -156,138 +159,81 @@ const Dashboard = () => {
     };
     setTempFilters(cleared);
     setAppliedFilters(cleared);
+    setPagination((prev) => ({ ...prev, currentPage: 1 }));
   };
 
   const filteredReviews = useMemo(() => {
-    const source =
-      appliedFilters.location ||
-      appliedFilters.orderType ||
-      appliedFilters.rating ||
-      appliedFilters.performance ||
-      appliedFilters.accuracy ||
-      appliedFilters.sentiment
-        ? allReviews
-        : reviews;
+    const source = allReviews.length ? allReviews : reviews;
 
-    return source.filter(
-      (review) =>
+    return source.filter((review) => {
+      const filterDiscount = appliedFilters.discountApplied
+        ? Number(appliedFilters.discountApplied)
+        : null;
+      const reviewDiscount =
+        review.discountApplied !== undefined
+          ? Math.floor(review.discountApplied) // Compare only integer part
+          : null;
+
+      return (
         (!appliedFilters.location ||
-          review.location
-            .toLowerCase()
-            .includes(appliedFilters.location.toLowerCase())) &&
+          (review.location &&
+            review.location
+              .toLowerCase()
+              .includes(appliedFilters.location.toLowerCase()))) &&
         (!appliedFilters.orderType ||
-          review.orderType === appliedFilters.orderType) &&
+          (review.orderType &&
+            review.orderType === appliedFilters.orderType)) &&
+        (!filterDiscount ||
+          (reviewDiscount !== null && reviewDiscount === filterDiscount)) &&
         (!appliedFilters.rating ||
-          review.rating === parseInt(appliedFilters.rating)) &&
+          (review.rating &&
+            review.rating === parseInt(appliedFilters.rating))) &&
         (!appliedFilters.performance ||
-          review.performance === appliedFilters.performance) &&
+          (review.performance &&
+            review.performance === appliedFilters.performance)) &&
         (!appliedFilters.accuracy ||
-          review.accuracy === appliedFilters.accuracy) &&
+          (review.accuracy && review.accuracy === appliedFilters.accuracy)) &&
         (!appliedFilters.sentiment ||
-          review.sentiment === appliedFilters.sentiment)
-    );
+          (review.sentiment && review.sentiment === appliedFilters.sentiment))
+      );
+    });
   }, [reviews, allReviews, appliedFilters]);
 
   const filteredPagination = useMemo(() => {
-    const isFiltered =
-      appliedFilters.location ||
-      appliedFilters.orderType ||
-      appliedFilters.rating ||
-      appliedFilters.performance ||
-      appliedFilters.accuracy ||
-      appliedFilters.sentiment;
-
-    if (isFiltered) {
-      const totalFilteredReviews = filteredReviews.length;
-      const totalFilteredPages = Math.ceil(
-        totalFilteredReviews / pagination.limit
-      );
-      const currentPageFiltered = Math.min(
-        pagination.currentPage,
-        totalFilteredPages || 1
-      );
-      return {
-        currentPage: currentPageFiltered,
-        totalPages: totalFilteredPages,
-        totalReviews: totalFilteredReviews,
-        limit: pagination.limit,
-      };
-    }
-    return pagination; // Use unfiltered pagination when no filters are applied
-  }, [filteredReviews, appliedFilters, pagination]);
+    const totalFilteredReviews = filteredReviews.length;
+    const totalFilteredPages = Math.ceil(
+      totalFilteredReviews / pagination.limit
+    );
+    const currentPageFiltered = Math.min(
+      pagination.currentPage,
+      totalFilteredPages || 1
+    );
+    return {
+      currentPage: currentPageFiltered,
+      totalPages: totalFilteredPages,
+      totalReviews: totalFilteredReviews,
+      limit: pagination.limit,
+    };
+  }, [filteredReviews, pagination.limit]);
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= filteredPagination.totalPages) {
-      if (
-        appliedFilters.location ||
-        appliedFilters.orderType ||
-        appliedFilters.rating ||
-        appliedFilters.performance ||
-        appliedFilters.accuracy ||
-        appliedFilters.sentiment
-      ) {
-        // For filtered data, update page locally since we're filtering allReviews
-        setPagination((prev) => ({ ...prev, currentPage: newPage }));
-      } else {
-        fetchData(newPage); // Fetch new page from server for unfiltered data
-      }
+      setPagination((prev) => ({ ...prev, currentPage: newPage }));
     }
   };
 
   const filteredMetrics = useMemo(() => {
-    const source =
-      appliedFilters.location ||
-      appliedFilters.orderType ||
-      appliedFilters.rating ||
-      appliedFilters.performance ||
-      appliedFilters.accuracy ||
-      appliedFilters.sentiment
-        ? allReviews
-        : allReviews;
+    const source = filteredReviews;
 
-    if (!source.length)
-      return {
-        averageRating: "N/A",
-        topAgent: "N/A",
-        bottomAgent: "N/A",
-        mostCommonComplaint: "N/A",
-        ordersByPriceRange: { "0-50": 0, "50-100": 0, "100+": 0 },
-        complaintsData: { labels: [], counts: [] },
-      };
+    if (!source.length) {
+      return null;
+    }
 
-    const filtered = source.filter(
-      (review) =>
-        (!appliedFilters.location ||
-          review.location
-            .toLowerCase()
-            .includes(appliedFilters.location.toLowerCase())) &&
-        (!appliedFilters.orderType ||
-          review.orderType === appliedFilters.orderType) &&
-        (!appliedFilters.rating ||
-          review.rating === parseInt(appliedFilters.rating)) &&
-        (!appliedFilters.performance ||
-          review.performance === appliedFilters.performance) &&
-        (!appliedFilters.accuracy ||
-          review.accuracy === appliedFilters.accuracy) &&
-        (!appliedFilters.sentiment ||
-          review.sentiment === appliedFilters.sentiment)
-    );
-
-    if (!filtered.length)
-      return {
-        averageRating: "N/A",
-        topAgent: "N/A",
-        bottomAgent: "N/A",
-        mostCommonComplaint: "N/A",
-        ordersByPriceRange: { "0-50": 0, "50-100": 0, "100+": 0 },
-        complaintsData: { labels: [], counts: [] },
-      };
-
-    const totalRating = filtered.reduce((sum, r) => sum + (r.rating || 0), 0);
-    const averageRating = Number((totalRating / filtered.length).toFixed(2));
+    const totalRating = source.reduce((sum, r) => sum + (r.rating || 0), 0);
+    const averageRating = Number((totalRating / source.length).toFixed(2));
 
     const agents = Object.values(
-      filtered.reduce((acc, r) => {
+      source.reduce((acc, r) => {
         const agentKey = r.agentName || "Unknown";
         acc[agentKey] = acc[agentKey] || {
           total: 0,
@@ -310,7 +256,7 @@ const Dashboard = () => {
     const bottomAgent =
       sortedAgents[sortedAgents.length - 1]?.agentName || "N/A";
 
-    const complaints = filtered.flatMap((r) => r.complaints || []);
+    const complaints = source.flatMap((r) => r.complaints || []);
     const complaintCounts = complaints.reduce((acc, c) => {
       if (c) acc[c] = (acc[c] || 0) + 1;
       return acc;
@@ -324,7 +270,7 @@ const Dashboard = () => {
       counts: sortedComplaints.slice(0, 5).map(([, c]) => c),
     };
 
-    const ordersByPriceRange = filtered.reduce(
+    const ordersByPriceRange = source.reduce(
       (acc, r) => {
         if (typeof r.orderPrice === "number") {
           if (r.orderPrice <= 50) acc["0-50"] += 1;
@@ -344,7 +290,7 @@ const Dashboard = () => {
       ordersByPriceRange,
       complaintsData,
     };
-  }, [allReviews, appliedFilters]);
+  }, [filteredReviews]);
 
   const chartOptions = useMemo(
     () => ({
@@ -411,6 +357,18 @@ const Dashboard = () => {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-gray-700 mb-1">Discount Applied</label>
+            <input
+              type="number"
+              name="discountApplied"
+              value={tempFilters.discountApplied}
+              onChange={handleFilterChange}
+              placeholder="Enter discount amount"
+              className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
+              step="any"
+            />
           </div>
           <div>
             <label className="block text-gray-700 mb-1">Rating</label>
@@ -492,152 +450,185 @@ const Dashboard = () => {
           </button>
         </div>
       </div>
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-        {[
-          { title: "Average Rating", value: filteredMetrics.averageRating },
-          { title: "Total Reviews", value: filteredPagination.totalReviews }, // Use filtered total
-          { title: "Top Agent", value: filteredMetrics.topAgent },
-          { title: "Bottom Agent", value: filteredMetrics.bottomAgent },
-          {
-            title: "Most Common Complaint",
-            value: filteredMetrics.mostCommonComplaint,
-          },
-        ].map((metric, idx) => (
-          <div
-            key={idx}
-            className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-          >
-            <h2 className="text-lg font-semibold text-gray-700">
-              {metric.title}
-            </h2>
-            <p className="text-2xl text-gray-900 mt-2">{metric.value}</p>
-          </div>
-        ))}
-      </div>
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4 text-gray-700">
-            Orders by Price Range
+
+      {filteredReviews.length === 0 && (
+        <div className="text-center p-6 bg-white rounded-lg shadow-md">
+          <h2 className="text-xl font-semibold text-gray-700">
+            No Data Found with Current Filters
           </h2>
-          <div style={{ height: "350px" }}>
-            <Bar
-              data={{
-                labels: Object.keys(filteredMetrics.ordersByPriceRange),
-                datasets: [
-                  {
-                    label: "Orders",
-                    data: Object.values(filteredMetrics.ordersByPriceRange),
-                    backgroundColor: ["#3b82f6", "#ef4444", "#10b981"],
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
-          </div>
+          <p className="text-gray-600 mt-2">
+            Please adjust or clear filters to view data.
+          </p>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4 text-gray-700">
-            Most Common Complaints
-          </h2>
-          <div style={{ height: "350px" }}>
-            <Pie
-              data={{
-                labels: filteredMetrics.complaintsData.labels,
-                datasets: [
-                  {
-                    data: filteredMetrics.complaintsData.counts,
-                    backgroundColor: [
-                      "#3b82f6",
-                      "#ef4444",
-                      "#10b981",
-                      "#f59e0b",
-                      "#8b5cf6",
+      )}
+
+      {filteredReviews.length > 0 && (
+        <>
+          {/* Key Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            {[
+              { title: "Average Rating", value: filteredMetrics.averageRating },
+              {
+                title: "Total Reviews",
+                value: filteredPagination.totalReviews,
+              },
+              { title: "Top Agent", value: filteredMetrics.topAgent },
+              { title: "Bottom Agent", value: filteredMetrics.bottomAgent },
+              {
+                title: "Most Common Complaint",
+                value: filteredMetrics.mostCommonComplaint,
+              },
+            ].map((metric, idx) => (
+              <div
+                key={idx}
+                className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+              >
+                <h2 className="text-lg font-semibold text-gray-700">
+                  {metric.title}
+                </h2>
+                <p className="text-2xl text-gray-900 mt-2">{metric.value}</p>
+              </div>
+            ))}
+          </div>
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700">
+                Orders by Price Range
+              </h2>
+              <div style={{ height: "350px" }}>
+                <Bar
+                  data={{
+                    labels: Object.keys(filteredMetrics.ordersByPriceRange),
+                    datasets: [
+                      {
+                        label: "Orders",
+                        data: Object.values(filteredMetrics.ordersByPriceRange),
+                        backgroundColor: ["#3b82f6", "#ef4444", "#10b981"],
+                      },
                     ],
-                  },
-                ],
-              }}
-              options={chartOptions}
-            />
+                  }}
+                  options={chartOptions}
+                />
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-lg font-semibold mb-4 text-gray-700">
+                Most Common Complaints
+              </h2>
+              <div style={{ height: "350px" }}>
+                <Pie
+                  data={{
+                    labels: filteredMetrics.complaintsData.labels,
+                    datasets: [
+                      {
+                        data: filteredMetrics.complaintsData.counts,
+                        backgroundColor: [
+                          "#3b82f6",
+                          "#ef4444",
+                          "#10b981",
+                          "#f59e0b",
+                          "#8b5cf6",
+                        ],
+                      },
+                    ],
+                  }}
+                  options={chartOptions}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      {/* Reviews Table */}
-      <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
-        <h2 className="text-lg font-semibold mb-4 text-gray-700">
-          Filtered Reviews (Paginated)
-        </h2>
-        <table className="w-full table-auto">
-          <thead className="bg-gray-100">
-            <tr>
-              {[
-                "Agent",
-                "Location",
-                "Rating",
-                "Performance",
-                "Accuracy",
-                "Sentiment",
-                "Complaints",
-              ].map((header) => (
-                <th
-                  key={header}
-                  className="text-left p-3 text-gray-700 font-semibold"
-                >
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredReviews
-              .slice(
-                (filteredPagination.currentPage - 1) * filteredPagination.limit,
-                filteredPagination.currentPage * filteredPagination.limit
-              )
-              .map((review) => (
-                <tr
-                  key={review._id || review.reviewId}
-                  className="border-b hover:bg-gray-50"
-                >
-                  <td className="p-3">{review.agentName}</td>
-                  <td className="p-3">{review.location}</td>
-                  <td className="p-3">{review.rating}</td>
-                  <td className="p-3">{review.performance || "N/A"}</td>
-                  <td className="p-3">{review.accuracy || "N/A"}</td>
-                  <td className="p-3">{review.sentiment || "N/A"}</td>
-                  <td className="p-3">
-                    {review.complaints?.join(", ") || "None"}
-                  </td>
+          {/* Reviews Table */}
+          <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
+            <h2 className="text-lg font-semibold mb-4 text-gray-700">
+              Filtered Reviews (Paginated)
+            </h2>
+            <table className="w-full table-auto">
+              <thead className="bg-gray-100">
+                <tr>
+                  {[
+                    "Agent",
+                    "Location",
+                    "Order Type",
+                    "Discount Applied",
+                    "Rating",
+                    "Performance",
+                    "Accuracy",
+                    "Sentiment",
+                    "Complaints",
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="text-left p-3 text-gray-700 font-semibold"
+                    >
+                      {header}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-          </tbody>
-        </table>
-        {/* Pagination Controls */}
-        <div className="flex justify-between items-center mt-4">
-          <button
-            onClick={() => handlePageChange(filteredPagination.currentPage - 1)}
-            disabled={filteredPagination.currentPage === 1}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
-          >
-            Previous
-          </button>
-          <span className="text-gray-700">
-            Page {filteredPagination.currentPage} of{" "}
-            {filteredPagination.totalPages} (Total:{" "}
-            {filteredPagination.totalReviews})
-          </span>
-          <button
-            onClick={() => handlePageChange(filteredPagination.currentPage + 1)}
-            disabled={
-              filteredPagination.currentPage === filteredPagination.totalPages
-            }
-            className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+              </thead>
+              <tbody>
+                {filteredReviews
+                  .slice(
+                    (filteredPagination.currentPage - 1) *
+                      filteredPagination.limit,
+                    filteredPagination.currentPage * filteredPagination.limit
+                  )
+                  .map((review) => (
+                    <tr
+                      key={review._id || review.reviewId}
+                      className="border-b hover:bg-gray-50"
+                    >
+                      <td className="p-3">{review.agentName || "N/A"}</td>
+                      <td className="p-3">{review.location || "N/A"}</td>
+                      <td className="p-3">{review.orderType || "N/A"}</td>
+                      <td className="p-3">
+                        {review.discountApplied !== undefined
+                          ? review.discountApplied.toFixed(2)
+                          : "N/A"}
+                      </td>
+                      <td className="p-3">{review.rating || "N/A"}</td>
+                      <td className="p-3">{review.performance || "N/A"}</td>
+                      <td className="p-3">{review.accuracy || "N/A"}</td>
+                      <td className="p-3">{review.sentiment || "N/A"}</td>
+                      <td className="p-3">
+                        {review.complaints?.join(", ") || "None"}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center mt-4">
+              <button
+                onClick={() =>
+                  handlePageChange(filteredPagination.currentPage - 1)
+                }
+                disabled={filteredPagination.currentPage === 1}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
+              >
+                Previous
+              </button>
+              <span className="text-gray-700">
+                Page {filteredPagination.currentPage} of{" "}
+                {filteredPagination.totalPages} (Total:{" "}
+                {filteredPagination.totalReviews})
+              </span>
+              <button
+                onClick={() =>
+                  handlePageChange(filteredPagination.currentPage + 1)
+                }
+                disabled={
+                  filteredPagination.currentPage ===
+                  filteredPagination.totalPages
+                }
+                className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-300 hover:bg-blue-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       <ToastContainer
         position="top-right"
         autoClose={3000}

@@ -29,7 +29,12 @@ const Login = () => {
       if (data.token) {
         StoreTokenAndRole(data.token, data.user);
         toast.success("Login successful!");
-        navigate("/dashboard");
+        if (data.user.role === "user") {
+          navigate("/dashboard");
+        }
+        if (data.user.role === "admin") {
+          navigate("/adminDashboard");
+        }
       } else if (response.status === 400) {
         toast.error("Invalid email or password");
       } else {
