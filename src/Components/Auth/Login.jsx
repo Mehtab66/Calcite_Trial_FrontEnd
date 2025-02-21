@@ -28,9 +28,9 @@ const Login = () => {
         StoreTokenAndRole(data.token, data.user);
         toast.success("Login successful!");
 
-        // Normalize role to lowercase for consistency
+        // Debug the role value
         const userRole = data.user.role ? data.user.role.toLowerCase() : "";
-        console.log("User role:", userRole); // Debug role
+        console.log("User role received:", userRole);
 
         if (userRole === "user") {
           console.log("Navigating to /dashboard for user");
@@ -39,8 +39,8 @@ const Login = () => {
           console.log("Navigating to /adminDashboard for admin");
           navigate("/adminDashboard");
         } else {
-          console.log("Unknown role:", userRole);
-          toast.error("Unknown user role. Please contact support.");
+          console.log("Unexpected role:", userRole);
+          toast.error(`Unknown role: ${userRole}. Please contact support.`);
         }
       } else if (response.status === 401 || response.status === 400) {
         toast.error("Invalid email or password");
