@@ -2,14 +2,15 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { BASE_URL } from "../../../Api.config";
 import { toast } from "react-toastify";
-import { useAuth } from "../../Context/AuthContext"; // Import useAuth
+import { useAuth } from "../../Context/AuthContext";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  const { StoreTokenAndRole } = useAuth(); // Use useAuth
+  const { StoreTokenAndRole } = useAuth();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -20,16 +21,26 @@ const Login = () => {
         },
         body: JSON.stringify({ email, password }),
       });
-      const data = await response.json().catch(() => ({})); // Fallback for non-JSON
+      const data = await response.json().catch(() => ({}));
       console.log("Status:", response.status, "Data:", data);
 
       if (data.token) {
         StoreTokenAndRole(data.token, data.user);
         toast.success("Login successful!");
-        if (data.user.role === "user") {
+
+        // Normalize role to lowercase for consistency
+        const userRole = data.user.role ? data.user.role.toLowerCase() : "";
+        console.log("User role:", userRole); // Debug role
+
+        if (userRole === "user") {
+          console.log("Navigating to /dashboard for user");
           navigate("/dashboard");
-        } else if (data.user.role === "admin") {
+        } else if (userRole === "admin") {
+          console.log("Navigating to /adminDashboard for admin");
           navigate("/adminDashboard");
+        } else {
+          console.log("Unknown role:", userRole);
+          toast.error("Unknown user role. Please contact support.");
         }
       } else if (response.status === 401 || response.status === 400) {
         toast.error("Invalid email or password");
@@ -44,6 +55,7 @@ const Login = () => {
       setError(error.message || "Login failed");
     }
   };
+
   return (
     <div className="flex bg-gradient-to-b from-blue-300 to-blue-100 flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md">
@@ -54,7 +66,6 @@ const Login = () => {
           <h2 className="text-2xl text-center mb-4 font-bold text-gray-900">
             Login
           </h2>
-
           <div className="mb-4">
             <label
               className="block text-gray-700 text-sm font-bold mb-2"
