@@ -103,7 +103,7 @@ const Login = () => {
               Sign In
             </button>
             <Link
-              to="/register"
+              to="/"
               className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
             >
               Don't have an account? Register
