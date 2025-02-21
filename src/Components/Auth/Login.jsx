@@ -24,22 +24,18 @@ const Login = () => {
       const data = await response.json().catch(() => ({}));
       console.log("Status:", response.status, "Data:", data);
 
-      if (data.token) {
-        // Debug the role value
-        const userRole = data.user.role ? data.user.role.toLowerCase() : "";
-        console.log("User role received:", userRole);
+      if (response.status === 200) {
+        StoreTokenAndRole(data.token, data.user);
 
-        if (userRole === "user") {
-          StoreTokenAndRole(data.token, data.user);
+        if (data.user.role === "user") {
+          console.log("User role:", data.user.role);
 
           toast.success("Login successful!");
           console.log("Navigating to /dashboard for user");
           navigate("/dashboard");
-        } else if (userRole === "admin") {
-          StoreTokenAndRole(data.token, data.user);
-
+        } else if (data.user.role === "admin") {
+          console.log("Admin role:", data.user.role);
           toast.success("Login successful!");
-
           console.log("Navigating to /adminDashboard for admin");
           navigate("/adminDashboard");
         } else {
