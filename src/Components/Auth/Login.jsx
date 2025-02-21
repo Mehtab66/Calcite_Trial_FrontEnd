@@ -25,17 +25,21 @@ const Login = () => {
       console.log("Status:", response.status, "Data:", data);
 
       if (data.token) {
-        StoreTokenAndRole(data.token, data.user);
-        toast.success("Login successful!");
-
         // Debug the role value
         const userRole = data.user.role ? data.user.role.toLowerCase() : "";
         console.log("User role received:", userRole);
 
         if (userRole === "user") {
+          StoreTokenAndRole(data.token, data.user);
+
+          toast.success("Login successful!");
           console.log("Navigating to /dashboard for user");
           navigate("/dashboard");
         } else if (userRole === "admin") {
+          StoreTokenAndRole(data.token, data.user);
+
+          toast.success("Login successful!");
+
           console.log("Navigating to /adminDashboard for admin");
           navigate("/adminDashboard");
         } else {
@@ -123,5 +127,4 @@ const Login = () => {
     </div>
   );
 };
-
 export default Login;
