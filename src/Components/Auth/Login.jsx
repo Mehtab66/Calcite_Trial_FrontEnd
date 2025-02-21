@@ -10,7 +10,6 @@ const Login = () => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { StoreTokenAndRole } = useAuth(); // Use useAuth
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -19,23 +18,20 @@ const Login = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        body: JSON.stringify({ email, password }),
       });
-      const data = await response.json();
-      console.log(data);
+      const data = await response.json().catch(() => ({})); // Fallback for non-JSON
+      console.log("Status:", response.status, "Data:", data);
+
       if (data.token) {
         StoreTokenAndRole(data.token, data.user);
         toast.success("Login successful!");
         if (data.user.role === "user") {
           navigate("/dashboard");
-        }
-        if (data.user.role === "admin") {
+        } else if (data.user.role === "admin") {
           navigate("/adminDashboard");
         }
-      } else if (response.status === 400) {
+      } else if (response.status === 401 || response.status === 400) {
         toast.error("Invalid email or password");
       } else {
         toast.error(
@@ -43,12 +39,11 @@ const Login = () => {
         );
       }
     } catch (error) {
-      console.log(error);
-      toast.error(error.message || "An error occurred. Please try again.");
+      console.log("Error:", error);
+      toast.error("An error occurred. Please try again.");
       setError(error.message || "Login failed");
     }
   };
-
   return (
     <div className="flex bg-gradient-to-b from-blue-300 to-blue-100 flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md">
