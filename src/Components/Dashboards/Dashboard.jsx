@@ -70,6 +70,7 @@ const Dashboard = () => {
     async (page = 1) => {
       if (!token) {
         toast.error("No authentication token found. Please log in.");
+        console.log("no token, from dashboard from ftech data line 73");
         navigate("/login");
         return;
       }
