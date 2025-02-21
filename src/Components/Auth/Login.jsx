@@ -16,32 +16,31 @@ const Login = () => {
     try {
       const response = await fetch(`${BASE_URL}users/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       const data = await response.json().catch(() => ({}));
-      console.log("Status:", response.status, "Data:", data);
+      console.log("Login Status:", response.status, "Data:", data);
 
-      if (response.status === 200) {
+      if (response.status === 200 && data.token) {
         StoreTokenAndRole(data.token, data.user);
+        toast.success("Login successful!");
+        const userRole = data.user.role ? data.user.role.toLowerCase() : "";
+        console.log("User role:", userRole);
 
-        if (data.user.role === "user") {
-          console.log("User role:", data.user.role);
-
-          toast.success("Login successful!");
-          console.log("Navigating to /dashboard for user");
-          navigate("/dashboard");
-        } else if (data.user.role === "admin") {
-          console.log("Admin role:", data.user.role);
-          toast.success("Login successful!");
-          console.log("Navigating to /adminDashboard for admin");
-          navigate("/adminDashboard");
-        } else {
-          console.log("Unexpected role:", userRole);
-          toast.error(`Unknown role: ${userRole}. Please contact support.`);
-        }
+        // Navigate after token is stored
+        setTimeout(() => {
+          if (userRole === "user") {
+            console.log("Navigating to /dashboard for user");
+            navigate("/dashboard");
+          } else if (userRole === "admin") {
+            console.log("Navigating to /adminDashboard for admin");
+            navigate("/adminDashboard");
+          } else {
+            console.log("Unexpected role:", userRole);
+            toast.error(`Unknown role: ${userRole}. Please contact support.`);
+          }
+        }, 100); // Small delay to ensure context updates
       } else if (response.status === 401 || response.status === 400) {
         toast.error("Invalid email or password");
       } else {
@@ -50,7 +49,7 @@ const Login = () => {
         );
       }
     } catch (error) {
-      console.log("Error:", error);
+      console.log("Login Error:", error);
       toast.error("An error occurred. Please try again.");
       setError(error.message || "Login failed");
     }
@@ -123,4 +122,5 @@ const Login = () => {
     </div>
   );
 };
+
 export default Login;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -68,13 +68,20 @@ const Dashboard = () => {
 
   const fetchData = useCallback(
     async (page = 1) => {
+      // Wait until loading is false to check token
+      if (loading) {
+        console.log("Still loading auth context, skipping fetch");
+        return;
+      }
+
       if (!token) {
+        console.log("No token found, redirecting to login");
         toast.error("No authentication token found. Please log in.");
-        console.log("no token, from dashboard from ftech data line 73");
         navigate("/login");
         return;
       }
 
+      console.log("Fetching data with token:", token);
       try {
         const [reviewsResponse, analyticsResponse] = await Promise.all([
           fetch(`${BASE_URL}review?page=${page}&limit=${pagination.limit}`, {
@@ -89,15 +96,22 @@ const Dashboard = () => {
           reviewsResponse.status === 401 ||
           analyticsResponse.status === 401
         ) {
+          console.log("401 received, redirecting to login");
           toast.error("Session expired. Please log in again.");
-          localStorage.removeItem("token");
-          localStorage.removeItem("userRole");
-          localStorage.removeItem("user");
+          localStorage.clear(); // Clear all localStorage
           navigate("/login");
           return;
         }
 
         if (!reviewsResponse.ok || !analyticsResponse.ok) {
+          const reviewsText = await reviewsResponse.text();
+          const analyticsText = await analyticsResponse.text();
+          console.error("Reviews error:", reviewsResponse.status, reviewsText);
+          console.error(
+            "Analytics error:",
+            analyticsResponse.status,
+            analyticsText
+          );
           throw new Error("Failed to fetch data");
         }
 
@@ -127,17 +141,22 @@ const Dashboard = () => {
 
         setAnalytics(analyticsData);
         setError(null);
+        console.log("Data fetched successfully:", {
+          reviewsData,
+          analyticsData,
+        });
       } catch (error) {
         console.error("Error fetching data:", error.message);
         setError(error.message);
         toast.error(`Failed to load dashboard data: ${error.message}`);
       }
     },
-    [navigate, token, pagination.limit, allReviews.length]
+    [navigate, token, pagination.limit, allReviews.length, loading]
   );
 
   useEffect(() => {
     if (!loading) {
+      console.log("Initial fetch triggered, token:", token);
       fetchData(pagination.currentPage);
     }
   }, [fetchData, pagination.currentPage, loading]);
@@ -172,7 +191,7 @@ const Dashboard = () => {
         : null;
       const reviewDiscount =
         review.discountApplied !== undefined
-          ? Math.floor(review.discountApplied) // Compare only integer part
+          ? Math.floor(review.discountApplied)
           : null;
 
       return (
@@ -325,8 +344,8 @@ const Dashboard = () => {
           <span className="font-bold">Role:</span> {user?.role}
         </p>
         <button
-          onClick={logout()}
-          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-blue-700"
+          onClick={logout}
+          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
         >
           Logout
         </button>
@@ -457,7 +476,6 @@ const Dashboard = () => {
           </button>
         </div>
       </div>
-
       {filteredReviews.length === 0 && (
         <div className="text-center p-6 bg-white rounded-lg shadow-md">
           <h2 className="text-xl font-semibold text-gray-700">
@@ -468,10 +486,8 @@ const Dashboard = () => {
           </p>
         </div>
       )}
-
       {filteredReviews.length > 0 && (
         <>
-          {/* Key Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
             {[
               { title: "Average Rating", value: filteredMetrics.averageRating },
@@ -497,7 +513,6 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
-          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4 text-gray-700">
@@ -545,7 +560,6 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-          {/* Reviews Table */}
           <div className="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
             <h2 className="text-lg font-semibold mb-4 text-gray-700">
               Filtered Reviews (Paginated)
@@ -604,7 +618,6 @@ const Dashboard = () => {
                   ))}
               </tbody>
             </table>
-            {/* Pagination Controls */}
             <div className="flex justify-between items-center mt-4">
               <button
                 onClick={() =>
